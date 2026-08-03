@@ -1,0 +1,29 @@
+# docker-compose.yml
+# -----------------------------------------------------------------------
+# Local development only. Runs ChromaDB on localhost:8000, matching
+# server/.env.example's default CHROMA_URL. MongoDB is NOT included here
+# deliberately - MongoDB Atlas's free M0 tier (Module 2) is simpler to
+# use even in development than running Mongo in Docker, since it's the
+# same connection string you'll use in production.
+#
+# Usage:
+#   docker compose up -d      # start ChromaDB in the background
+#   docker compose down       # stop it
+#   docker compose down -v    # stop it AND wipe stored vectors
+# -----------------------------------------------------------------------
+
+version: '3.8'
+
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - '8000:8000'
+    volumes:
+      - chroma-data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+
+volumes:
+  chroma-data:

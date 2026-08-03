@@ -1,0 +1,25 @@
+/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-hairline;
+  }
+  body {
+    @apply bg-void text-ink antialiased;
+  }
+  /* Visible keyboard focus everywhere - accessibility floor, not optional */
+  :focus-visible {
+    @apply outline-none ring-2 ring-nova-amber ring-offset-2 ring-offset-void;
+  }
+  /* Respect reduced-motion preference for the breathing/burst animations */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

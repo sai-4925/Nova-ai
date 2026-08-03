@@ -1,0 +1,16 @@
+{
+  "name": "nova-system-agent-companion",
+  "version": "1.0.0",
+  "description": "NOVA AI System Agent companion - runs on YOUR computer, connects out to your NOVA backend, executes desktop commands (open apps, screenshot, shutdown/restart) on Nova's behalf.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
