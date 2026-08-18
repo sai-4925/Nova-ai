@@ -26,3 +26,9 @@ npm-debug.log*
 
 # Test coverage
 coverage/
+
+# Other
+server/.wwebjs_cache/
+server/whatsapp-session/
+**/node_modules/
+.env

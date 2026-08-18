@@ -41,15 +41,22 @@ export const searchWhatsAppContactTool = tool(
 export const readWhatsAppMessagesTool = tool(
   async ({ chatNameQuery, count }) => {
     const messages = await readRecentMessagesFromChat(chatNameQuery, count || 10);
-    if (messages.length === 0) return `No recent messages found in the chat with "${chatNameQuery}".`;
-    return messages.map((m) => `${m.fromMe ? 'You' : chatNameQuery}: ${m.body}`).join('\n');
+    if (messages.length === 0) {
+      return `No recent messages found in the chat with "${chatNameQuery}".`;
+    }
+    return messages
+      .map((m) => `${m.fromMe ? 'You' : chatNameQuery}: ${m.body}`)
+      .join('\n');
   },
   {
     name: 'read_whatsapp_messages',
-    description: "Reads recent messages from a specific chat in Nova's connected WhatsApp account.",
+    description:
+      "Reads recent messages from a WhatsApp chat. chatNameQuery can be a contact name OR a phone number with country code (e.g. +916300509285).",
     schema: z.object({
-      chatNameQuery: z.string().describe('Name of the contact/chat to read messages from'),
-      count: z.number().optional().describe('How many recent messages to read, default 10'),
+      chatNameQuery: z
+        .string()
+        .describe('Contact name or phone number with country code'),
+      count: z.number().optional().describe('How many recent messages, default 10'),
     }),
   }
 );
