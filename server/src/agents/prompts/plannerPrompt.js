@@ -20,6 +20,7 @@ export const AVAILABLE_ROUTES = [
   'research',
   'coding',
   'system',
+  'meta',
   'general',
 ];
 
@@ -44,7 +45,7 @@ Available routes and when to use them:
   - For "send": include "phoneNumber" (with country code, only if the user gave a real
     number - do NOT invent one from a name) and "message".
   - For "search_contact": include "nameQuery".
-  - For "read": include "chatNameQuery" and optionally "count".
+  - For "read": include "chatNameQuery" (contact name OR phone number with country code) and optionally "count".
 - "reminder": create, list, or delete a reminder. routeParams MUST include
   "action": one of "create" | "list" | "delete".
   - For "create": include "title" (string) and "remindAtISO" (absolute ISO 8601 datetime).
@@ -63,9 +64,21 @@ Available routes and when to use them:
   (deeper than a quick "search" fact-lookup). routeParams should include "topic".
 - "coding": explain, generate, or debug code
 - "system": desktop actions on the user's own computer via their local companion app.
-  routeParams MUST include "action": one of "open_app" | "take_screenshot" | "shutdown" | "restart" | "cancel_power_action".
-  - For "open_app": include "appName".
+  routeParams MUST include "action": one of "open_app" | "take_screenshot" | "shutdown" | "restart" | "cancel_power_action" | "create_directory" | "create_file" | "type_text" | "press_hotkey" | "click_at".
+  - For "open_app": include "appName". Optionally also include:
+      - "url" (a full URL to open, mainly for Chrome)
+      - "profile" (Chrome profile name, e.g. "Default" or "Profile 1")
+      - "search" (a Google search query to open in Chrome)
+  - For "create_directory": include "path" optional "content"
+  - For "create_file": include "path" and optionally "content"
+  - For "type_text": "text"
+  - For "press_hotkey": "keys" (array of nut.js key names, e.g. ["LeftControl","S"])
+  - For "click_at": "x", "y", optional "button" ("left"|"right")
 - "general": anything else - casual conversation, questions you can answer directly with no tool
+- "meta": questions about Nova itself — how many agents, what can you do,
+  list agents, capabilities, about this assistant.
+  routeParams may include "action": "count" | "list" | "summary" | "about".
+  Examples: "how many agents do we have", "what can you do", "list your tools".
 
 Recent conversation context (may be empty):
 ${recentHistorySummary || '(none)'}

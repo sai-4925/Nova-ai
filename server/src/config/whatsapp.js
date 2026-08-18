@@ -1,19 +1,4 @@
 // config/whatsapp.js
-// -----------------------------------------------------------------------
-// A SINGLE shared WhatsApp session for the entire app - not one per
-// user (see Module 17's design note: per-user sessions would each need
-// their own Puppeteer/Chromium process, impractical on free-tier
-// hosting). Whoever administers this NOVA deployment scans the QR code
-// ONCE with their own phone; after that, Nova can send/read WhatsApp
-// messages on behalf of any user who chats with it - the same
-// shared-account trade-off Module 16 made for email sending.
-//
-// This client is created once and kept alive for the server's entire
-// lifetime (like the Mongo connection), NOT per-request like a normal
-// tool - initialize() is called from server.js at boot, without
-// blocking the HTTP server on it (see the comment there).
-// -----------------------------------------------------------------------
-
 import pkg from 'whatsapp-web.js';
 import qrcodeTerminal from 'qrcode-terminal';
 import { env } from './env.js';
@@ -25,31 +10,47 @@ let client = null;
 let isReady = false;
 
 export const getWhatsAppClient = () => client;
-export const isWhatsAppReady = () => isReady;
+
+/** Ready only if flag is set AND client exists */
+export const isWhatsAppReady = () => Boolean(isReady && client);
 
 /**
- * Creates and starts the shared WhatsApp client. Safe to call once at
- * server boot; does nothing if WHATSAPP_ENABLED isn't "true", since this
- * feature is opt-in given its hosting constraints (see Module 17 notes).
+ * Call once at server boot.
  */
 export const initializeWhatsApp = async () => {
+  logger.info(`WhatsApp init starting (enabled=${env.whatsappEnabled}, path=${env.whatsappSessionPath})`);
+
   if (!env.whatsappEnabled) {
     logger.info('WhatsApp Agent is disabled (WHATSAPP_ENABLED=false) - skipping initialization.');
     return;
   }
 
+  if (client) {
+    try {
+      await client.destroy();
+    } catch {
+      // ignore
+    }
+    client = null;
+    isReady = false;
+  }
+
   client = new Client({
     authStrategy: new LocalAuth({ dataPath: env.whatsappSessionPath }),
     puppeteer: {
-      // Required flags for running Chromium inside most containerized/
-      // Linux server environments (including Render) where the default
-      // sandbox can't run as expected.
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+      ],
     },
   });
 
   client.on('qr', (qr) => {
-    logger.info('WhatsApp QR code received - scan this with the account you want Nova to use:');
+    isReady = false;
+    logger.info('WhatsApp QR code received - scan with the phone Nova should use:');
     qrcodeTerminal.generate(qr, { small: true });
   });
 
@@ -62,14 +63,27 @@ export const initializeWhatsApp = async () => {
     logger.info('WhatsApp client is ready.');
   });
 
+  client.on('auth_failure', (msg) => {
+    isReady = false;
+    logger.error(`WhatsApp auth failure: ${msg}`);
+  });
+
+  client.on('loading_screen', (percent, message) => {
+    logger.info(`WhatsApp loading: ${percent}% - ${message}`);
+  });
+
   client.on('disconnected', (reason) => {
     isReady = false;
     logger.warn(`WhatsApp client disconnected: ${reason}`);
   });
 
   try {
+    logger.info('WhatsApp client.initialize() calling...');
     await client.initialize();
+    logger.info('WhatsApp client.initialize() resolved (ready event may still be pending)');
   } catch (error) {
+    isReady = false;
     logger.error(`WhatsApp client failed to initialize: ${error.message}`);
+    console.error(error);
   }
 };

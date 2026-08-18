@@ -16,7 +16,8 @@ import { readFileSync } from 'fs';
 import { openApp } from './commands/openApp.js';
 import { takeScreenshot } from './commands/screenshot.js';
 import { scheduleShutdown, scheduleRestart, cancelScheduledPowerAction } from './commands/powerControl.js';
-
+import { createDirectory, createFile } from './commands/createPath.js';  
+import { typeText, pressHotkey, clickAt } from './commands/inputControl.js';
 const config = JSON.parse(readFileSync(new URL('../config.json', import.meta.url)));
 
 const COMMAND_HANDLERS = {
@@ -25,6 +26,11 @@ const COMMAND_HANDLERS = {
   shutdown: scheduleShutdown,
   restart: scheduleRestart,
   cancel_power_action: cancelScheduledPowerAction,
+  create_directory: createDirectory,   
+  create_file: createFile,
+  type_text: typeText,                 
+  press_hotkey: pressHotkey,           
+  click_at: clickAt,                   
 };
 
 let reconnectDelayMs = 2000;

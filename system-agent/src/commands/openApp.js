@@ -1,10 +1,7 @@
 // src/commands/openApp.js
 // -----------------------------------------------------------------------
 // Cross-platform app/folder opening. Maps a few common names to the
-// right OS-specific command - genuinely best-effort, since "every app
-// name on every OS" isn't fully solvable without a proper app registry.
-// Unknown names fall through to the OS's generic "open" mechanism,
-// which works surprisingly often for folder paths and URLs.
+// right OS-specific command. Supports Chrome profile + URL/search.
 // -----------------------------------------------------------------------
 
 import { exec } from 'child_process';
@@ -37,19 +34,68 @@ const KNOWN_APPS = {
 };
 
 /**
- * @param {{ appName: string }} params
- * @returns {Promise<string>} a human-readable result for the response message
+ * @param {{ appName: string, url?: string, profile?: string, search?: string }} params
+ * @returns {Promise<string>}
  */
-export const openApp = async ({ appName }) => {
-  const platform = process.platform; // 'darwin' | 'win32' | 'linux'
-  const normalised = appName.trim().toLowerCase();
-  const knownCommand = KNOWN_APPS[platform]?.[normalised];
+export const openApp = async ({ appName, url, profile, search }) => {
+  const platform = process.platform;
+  const normalised = (appName || '').trim().toLowerCase();
 
-  // Fallback: treat anything unrecognised as a path/URL/folder and use
-  // the OS's generic opener - covers "open my downloads folder" etc.
+  // Build final URL if user asked to search
+  let finalUrl = url;
+  if (search && !finalUrl) {
+    finalUrl = `https://www.google.com/search?q=${encodeURIComponent(search)}`;
+  }
+
+  // Special Chrome handling (profile + URL)
+  const isChrome = normalised === 'chrome' || normalised === 'google chrome';
+
+  if (isChrome) {
+    try {
+      if (platform === 'win32') {
+        // start chrome [--profile-directory="Profile 1"] ["url"]
+        let cmd = 'start "" chrome';
+        if (profile) cmd += ` --profile-directory="${profile}"`;
+        if (finalUrl) cmd += ` "${finalUrl}"`;
+        await execAsync(cmd);
+      } else if (platform === 'darwin') {
+        // open -a "Google Chrome" [--args --profile-directory=...] [url]
+        let cmd = 'open -a "Google Chrome"';
+        if (profile || finalUrl) {
+          cmd += ' --args';
+          if (profile) cmd += ` --profile-directory="${profile}"`;
+          if (finalUrl) cmd += ` "${finalUrl}"`;
+        } else if (finalUrl) {
+          cmd += ` "${finalUrl}"`;
+        }
+        await execAsync(cmd);
+      } else {
+        // Linux
+        let cmd = 'google-chrome';
+        if (profile) cmd += ` --profile-directory="${profile}"`;
+        if (finalUrl) cmd += ` "${finalUrl}"`;
+        await execAsync(cmd);
+      }
+
+      const parts = [];
+      if (profile) parts.push(`profile: ${profile}`);
+      if (search) parts.push(`search: "${search}"`);
+      else if (finalUrl) parts.push(`url: ${finalUrl}`);
+      return `Opened Chrome${parts.length ? ` (${parts.join(', ')})` : ''}.`;
+    } catch (error) {
+      throw new Error(`Could not open Chrome: ${error.message}`);
+    }
+  }
+
+  // Normal apps / folders / URLs
+  const knownCommand = KNOWN_APPS[platform]?.[normalised];
   const command =
     knownCommand ||
-    (platform === 'darwin' ? `open "${appName}"` : platform === 'win32' ? `start "" "${appName}"` : `xdg-open "${appName}"`);
+    (platform === 'darwin'
+      ? `open "${appName}"`
+      : platform === 'win32'
+        ? `start "" "${appName}"`
+        : `xdg-open "${appName}"`);
 
   try {
     await execAsync(command);

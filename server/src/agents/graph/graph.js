@@ -30,7 +30,7 @@ import { researchNode } from '../nodes/researchNode.js';
 import { codingNode } from '../nodes/codingNode.js';
 import { systemNode } from '../nodes/systemNode.js';
 import { responseNode } from '../nodes/responseNode.js';
-
+import { metaNode } from '../nodes/metaNode.js';
 // Maps a `route` value (set by Planner/Tool Selection) to the actual
 // node name to run next. 'general' skips straight to the Response node
 // since no specialist tool is needed - this is the one route with no
@@ -46,6 +46,7 @@ const routeMap = {
   research: 'research',
   coding: 'coding',
   system: 'system',
+  meta: 'meta',
   general: 'response',
 };
 
@@ -70,7 +71,7 @@ const buildGraph = () => {
     .addNode('coding', codingNode)
     .addNode('system', systemNode)
     .addNode('response', responseNode)
-
+    .addNode('meta', metaNode)
     .addEdge(START, 'planner')
     .addEdge('planner', 'memory')
     .addEdge('memory', 'toolSelection')
@@ -88,6 +89,8 @@ const buildGraph = () => {
       research: 'research',
       coding: 'coding',
       system: 'system',
+      meta: 'meta',
+      general: 'response',
       response: 'response',
     })
 
@@ -103,6 +106,8 @@ const buildGraph = () => {
     .addConditionalEdges('research', afterToolEdge, { toolSelection: 'toolSelection', response: 'response' })
     .addConditionalEdges('coding', afterToolEdge, { toolSelection: 'toolSelection', response: 'response' })
     .addConditionalEdges('system', afterToolEdge, { toolSelection: 'toolSelection', response: 'response' })
+    .addConditionalEdges('meta', afterToolEdge, {toolSelection: 'toolSelection',response: 'response',
+})
 
     .addEdge('response', END);
 

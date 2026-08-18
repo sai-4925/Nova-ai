@@ -72,3 +72,19 @@ export const generateOnce = async (prompt, systemInstruction) => {
   const result = await model.generateContent(prompt);
   return result.response.text();
 };
+async function withRetry(fn, retries = 3) {
+  let lastError;
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const msg = String(err?.message || err);
+      if (!/503|429|high demand|unavailable/i.test(msg) || i === retries - 1) {
+        throw err;
+      }
+      await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
+    }
+  }
+  throw lastError;
+}
