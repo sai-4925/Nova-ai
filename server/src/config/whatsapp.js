@@ -1,4 +1,4 @@
-// config/whatsapp.js
+// config/whatsapp.js  – IMPROVED
 import pkg from 'whatsapp-web.js';
 import qrcodeTerminal from 'qrcode-terminal';
 import { env } from './env.js';
@@ -8,34 +8,14 @@ const { Client, LocalAuth } = pkg;
 
 let client = null;
 let isReady = false;
+let reconnectAttempts = 0;
+const MAX_RECONNECT = 5;
 
 export const getWhatsAppClient = () => client;
-
-/** Ready only if flag is set AND client exists */
 export const isWhatsAppReady = () => Boolean(isReady && client);
 
-/**
- * Call once at server boot.
- */
-export const initializeWhatsApp = async () => {
-  logger.info(`WhatsApp init starting (enabled=${env.whatsappEnabled}, path=${env.whatsappSessionPath})`);
-
-  if (!env.whatsappEnabled) {
-    logger.info('WhatsApp Agent is disabled (WHATSAPP_ENABLED=false) - skipping initialization.');
-    return;
-  }
-
-  if (client) {
-    try {
-      await client.destroy();
-    } catch {
-      // ignore
-    }
-    client = null;
-    isReady = false;
-  }
-
-  client = new Client({
+const createClient = () => {
+  return new Client({
     authStrategy: new LocalAuth({ dataPath: env.whatsappSessionPath }),
     puppeteer: {
       headless: true,
@@ -44,46 +24,74 @@ export const initializeWhatsApp = async () => {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
+        '--disable-software-rasterizer',
+        '--single-process',          // helps on some VPS
       ],
+      // Optional: pin a known-good Chrome if you have it
+      // executablePath: process.env.CHROME_PATH,
+    },
+    // Helps with newer WhatsApp Web versions
+    webVersionCache: {
+      type: 'remote',
+      remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1027590052-alpha.html',
     },
   });
+};
 
-  client.on('qr', (qr) => {
+const attachListeners = (c) => {
+  c.on('qr', (qr) => {
     isReady = false;
-    logger.info('WhatsApp QR code received - scan with the phone Nova should use:');
+    logger.info('WhatsApp QR code – scan with the phone Nova should use:');
     qrcodeTerminal.generate(qr, { small: true });
   });
 
-  client.on('authenticated', () => {
-    logger.info('WhatsApp authenticated successfully.');
-  });
-
-  client.on('ready', () => {
+  c.on('authenticated', () => logger.info('WhatsApp authenticated'));
+  c.on('ready', () => {
     isReady = true;
-    logger.info('WhatsApp client is ready.');
+    reconnectAttempts = 0;
+    logger.info('WhatsApp client is READY');
   });
 
-  client.on('auth_failure', (msg) => {
+  c.on('auth_failure', (msg) => {
     isReady = false;
     logger.error(`WhatsApp auth failure: ${msg}`);
   });
 
-  client.on('loading_screen', (percent, message) => {
-    logger.info(`WhatsApp loading: ${percent}% - ${message}`);
+  c.on('loading_screen', (percent, message) => {
+    logger.info(`WhatsApp loading: ${percent}% – ${message}`);
   });
 
-  client.on('disconnected', (reason) => {
+  c.on('disconnected', async (reason) => {
     isReady = false;
-    logger.warn(`WhatsApp client disconnected: ${reason}`);
+    logger.warn(`WhatsApp disconnected: ${reason}`);
+
+    if (reconnectAttempts < MAX_RECONNECT) {
+      reconnectAttempts++;
+      logger.info(`Attempting reconnect (${reconnectAttempts}/${MAX_RECONNECT})...`);
+      setTimeout(() => initializeWhatsApp(), 5000 * reconnectAttempts);
+    }
   });
+};
+
+export const initializeWhatsApp = async () => {
+  if (!env.whatsappEnabled) {
+    logger.info('WhatsApp Agent disabled (WHATSAPP_ENABLED=false)');
+    return;
+  }
+
+  if (client) {
+    try { await client.destroy(); } catch {}
+    client = null;
+    isReady = false;
+  }
+
+  client = createClient();
+  attachListeners(client);
 
   try {
-    logger.info('WhatsApp client.initialize() calling...');
     await client.initialize();
-    logger.info('WhatsApp client.initialize() resolved (ready event may still be pending)');
-  } catch (error) {
+  } catch (err) {
     isReady = false;
-    logger.error(`WhatsApp client failed to initialize: ${error.message}`);
-    console.error(error);
+    logger.error(`WhatsApp init failed: ${err.message}`);
   }
 };
