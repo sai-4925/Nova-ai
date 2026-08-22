@@ -1,36 +1,71 @@
-// src/index.js
-// -----------------------------------------------------------------------
-// The companion app's entry point. Run this on YOUR OWN computer (never
-// on the cloud backend) - it connects OUTBOUND to your deployed NOVA
-// backend and stays connected, executing commands Nova sends down that
-// connection. See server/src/config/systemAgentSocket.js for the other
-// side of this connection.
-//
-// Reconnects automatically with backoff if the connection drops (sleep/
-// wake, network blip, backend redeploy) - this is meant to run
-// continuously in the background, not be restarted manually each time.
-// -----------------------------------------------------------------------
-
+// src/index.js  – FULLY EXPANDED
 import { WebSocket } from 'ws';
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { openApp } from './commands/openApp.js';
 import { takeScreenshot } from './commands/screenshot.js';
 import { scheduleShutdown, scheduleRestart, cancelScheduledPowerAction } from './commands/powerControl.js';
-import { createDirectory, createFile } from './commands/createPath.js';  
+import { createDirectory, createFile } from './commands/createPath.js';
 import { typeText, pressHotkey, clickAt } from './commands/inputControl.js';
-const config = JSON.parse(readFileSync(new URL('../config.json', import.meta.url)));
 
-const COMMAND_HANDLERS = {
+// NEW COMMANDS
+import { runCommand } from './commands/shell.js';
+import { listProcesses, killProcess } from './commands/process.js';
+import { setVolume, mute, unmute, mediaPlayPause, mediaNext, mediaPrevious } from './commands/volumeMedia.js';
+import { getClipboard, setClipboard } from './commands/clipboard.js';
+import { listDir, openFile, searchFiles } from './commands/fileSystem.js';
+import { focusWindow, minimizeWindow, closeWindow } from './commands/windowControl.js';
+import { getSystemInfo } from './commands/systemInfo.js';
+import { showNotification } from './commands/notification.js';
+
+const configPath = new URL('../config.json', import.meta.url);
+if (!existsSync(configPath)) {
+  console.error('config.json not found. Copy config.example.json → config.json and fill it in.');
+  process.exit(1);
+}
+const config = JSON.parse(readFileSync(configPath));
+
+const FULL_MODE = config.fullControl === true; // must be explicitly enabled
+
+const SAFE_HANDLERS = {
   open_app: openApp,
   take_screenshot: takeScreenshot,
   shutdown: scheduleShutdown,
   restart: scheduleRestart,
   cancel_power_action: cancelScheduledPowerAction,
-  create_directory: createDirectory,   
+  create_directory: createDirectory,
   create_file: createFile,
-  type_text: typeText,                 
-  press_hotkey: pressHotkey,           
-  click_at: clickAt,                   
+  type_text: typeText,
+  press_hotkey: pressHotkey,
+  click_at: clickAt,
+
+  // Always safe
+  set_volume: setVolume,
+  mute: mute,
+  unmute: unmute,
+  media_play_pause: mediaPlayPause,
+  media_next: mediaNext,
+  media_previous: mediaPrevious,
+  get_clipboard: getClipboard,
+  set_clipboard: setClipboard,
+  list_dir: listDir,
+  open_file: openFile,
+  search_files: searchFiles,
+  focus_window: focusWindow,
+  minimize_window: minimizeWindow,
+  close_window: closeWindow,
+  get_system_info: getSystemInfo,
+  show_notification: showNotification,
+};
+
+const FULL_ONLY_HANDLERS = {
+  run_command: runCommand,
+  list_processes: listProcesses,
+  kill_process: killProcess,
+};
+
+const COMMAND_HANDLERS = {
+  ...SAFE_HANDLERS,
+  ...(FULL_MODE ? FULL_ONLY_HANDLERS : {}),
 };
 
 let reconnectDelayMs = 2000;
@@ -38,11 +73,12 @@ const MAX_RECONNECT_DELAY_MS = 30000;
 
 const connect = () => {
   console.log(`Connecting to ${config.backendWsUrl}...`);
+  console.log(`Mode: ${FULL_MODE ? 'FULL CONTROL' : 'SAFE (restricted)'}`);
   const ws = new WebSocket(config.backendWsUrl);
 
   ws.on('open', () => {
     console.log('Connected. Registering...');
-    reconnectDelayMs = 2000; // reset backoff on a successful connection
+    reconnectDelayMs = 2000;
     ws.send(JSON.stringify({ type: 'register', token: config.pairingToken }));
   });
 
@@ -58,7 +94,10 @@ const connect = () => {
 
     const handler = COMMAND_HANDLERS[msg.action];
     if (!handler) {
-      ws.send(JSON.stringify({ type: 'response', requestId: msg.requestId, error: `Unknown action: ${msg.action}` }));
+      const reason = FULL_MODE
+        ? `Unknown action: ${msg.action}`
+        : `Action "${msg.action}" is only available in fullControl mode. Set "fullControl": true in config.json`;
+      ws.send(JSON.stringify({ type: 'response', requestId: msg.requestId, error: reason }));
       return;
     }
 
@@ -78,8 +117,6 @@ const connect = () => {
 
   ws.on('error', (error) => {
     console.error('Connection error:', error.message);
-    // 'close' fires after 'error' for the same socket, so reconnection
-    // is already handled there - no separate retry needed here.
   });
 };
 

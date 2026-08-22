@@ -64,16 +64,23 @@ Available routes and when to use them:
   (deeper than a quick "search" fact-lookup). routeParams should include "topic".
 - "coding": explain, generate, or debug code
 - "system": desktop actions on the user's own computer via their local companion app.
-  routeParams MUST include "action": one of "open_app" | "take_screenshot" | "shutdown" | "restart" | "cancel_power_action" | "create_directory" | "create_file" | "type_text" | "press_hotkey" | "click_at".
-  - For "open_app": include "appName". Optionally also include:
-      - "url" (a full URL to open, mainly for Chrome)
-      - "profile" (Chrome profile name, e.g. "Default" or "Profile 1")
-      - "search" (a Google search query to open in Chrome)
-  - For "create_directory": include "path" optional "content"
-  - For "create_file": include "path" and optionally "content"
-  - For "type_text": "text"
-  - For "press_hotkey": "keys" (array of nut.js key names, e.g. ["LeftControl","S"])
-  - For "click_at": "x", "y", optional "button" ("left"|"right")
+  routeParams MUST include "action": one of "open_app" | "take_screenshot" | "shutdown" | "restart" | "cancel_power_action" | "create_directory" | "create_file" | "type_text" | "press_hotkey" | "click_at" | "run_command" | "list_processes" | "kill_process" | "set_volume" | "mute" | "unmute" | "media_play_pause" | "media_next" | "media_previous" | "get_clipboard" | "set_clipboard" | "list_dir" | "open_file" | "search_files" | "focus_window" | "minimize_window" | "close_window" | "get_system_info" | "show_notification".
+  Parameter notes:
+  - open_app: "appName", optional "url", "profile", or "search"
+  - create_directory / create_file: "path", optional "content" for files
+  - type_text: "text"
+  - press_hotkey: "keys" (array of nut.js key names, e.g. ["LeftControl","S"])
+  - click_at: "x", "y", optional "button" ("left"|"right")
+  - run_command: "command", optional "cwd", "timeoutMs"
+  - list_processes: optional "filter"
+  - kill_process: "name" or "pid"
+  - set_volume: "level" (0-100)
+  - set_clipboard: "text"
+  - list_dir: optional "dirPath" or "path"
+  - open_file: "filePath" or "path"
+  - search_files: "query", optional "dirPath", "max"
+  - focus_window / minimize_window / close_window: "title"
+  - show_notification: "body", optional "title"
 - "general": anything else - casual conversation, questions you can answer directly with no tool
 - "meta": questions about Nova itself — how many agents, what can you do,
   list agents, capabilities, about this assistant.

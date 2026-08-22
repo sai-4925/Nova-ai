@@ -1,6 +1,6 @@
 # NOVA System Agent Companion
 
-This is a **separate, standalone app** you run on your own computer — never on your cloud NOVA backend (Render, etc.). It's what lets Nova open apps, take screenshots, and shut down/restart *your* machine, by connecting outward to your deployed backend.
+This is a **separate, standalone app** you run on your own computer - never on your cloud NOVA backend (Render, etc.). It connects outward to the backend and lets Nova act on that computer.
 
 ## Why this exists (read this before setting it up)
 
@@ -27,7 +27,13 @@ Your NOVA backend runs in the cloud. A cloud server has no way to reach into you
    npm install
    npm start
    ```
-   You should see `Connected. Registering...` in the terminal. Leave this running in the background — it reconnects automatically if your network drops or your laptop sleeps/wakes.
+   You should see `Connected. Registering...` in the terminal. The companion reconnects automatically if the network drops.
+
+## Available actions
+
+The companion supports opening apps and files, screenshots, keyboard and mouse input, creating files and folders, volume and media controls, clipboard access, window control, file search, system information, desktop notifications, and scheduled shutdown or restart.
+
+`run_command`, `list_processes`, and `kill_process` require `"fullControl": true` in `config.json`. Keep it `false` unless those actions are needed. All actions execute on the computer where this companion is running.
 
 ## Platform notes — please read
 
@@ -37,4 +43,30 @@ Your NOVA backend runs in the cloud. A cloud server has no way to reach into you
 
 ## Running this permanently
 
-For actual day-to-day use, you'll want this running automatically at login rather than manually via `npm start` each time — e.g., as a Windows Startup item, a macOS LaunchAgent, or a `systemd --user` service on Linux. That setup is platform-specific and outside this app's scope, but any "run this command at login" mechanism your OS provides will work.
+### Windows
+
+From PowerShell in this directory, run:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\install-windows-startup.ps1
+```
+
+This creates a hidden-window shortcut in the current user's Startup folder. Remove `NOVA System Agent.lnk` from that folder to disable automatic startup.
+
+### macOS
+
+Copy `macos-launch-agent.plist.example` to `~/Library/LaunchAgents/com.nova.system-agent.plist`, replace the two `REPLACE_*` values, then run:
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.nova.system-agent.plist
+```
+
+### Linux
+
+Copy `linux-systemd-user.service.example` to `~/.config/systemd/user/nova-system-agent.service`, replace `REPLACE_AGENT_DIRECTORY`, then run:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now nova-system-agent.service
+```

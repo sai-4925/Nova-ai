@@ -1,0 +1,15 @@
+[Unit]
+Description=NOVA System Agent Companion
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=REPLACE_AGENT_DIRECTORY
+ExecStart=REPLACE_NODE_PATH REPLACE_AGENT_DIRECTORY/src/index.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=default.target

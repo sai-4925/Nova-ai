@@ -1,171 +1,193 @@
-// services/whatsappService.js
-// -----------------------------------------------------------------------
-// Pure functions over the shared WhatsApp client (config/whatsapp.js).
-// Every function checks isWhatsAppReady() first and throws a clear,
-// actionable error if not - "the admin needs to scan a QR code" is a
-// completely different failure mode from "invalid phone number", and
-// callers (whatsappNode.js) should be able to tell them apart from the
-// message alone.
-// -----------------------------------------------------------------------
-
+// services/whatsappService.js  – IMPROVED
 import { getWhatsAppClient, isWhatsAppReady } from '../config/whatsapp.js';
 import { ApiError } from '../utils/ApiError.js';
 
 const assertReady = () => {
   if (!isWhatsAppReady()) {
     throw ApiError.internal(
-      'WhatsApp is not connected - an admin needs to enable WHATSAPP_ENABLED and scan the QR code shown in the server logs.'
+      'WhatsApp is not connected – admin needs to enable WHATSAPP_ENABLED and scan the QR code.'
     );
   }
 };
 
-/**
- * Converts a phone number (with or without a leading +) into the chat
- * ID format whatsapp-web.js expects.
- * @param {string} phoneNumber
- */
 const toChatId = (phoneNumber) => {
-  const digitsOnly = String(phoneNumber).replace(/[^\d]/g, '');
-  if (!digitsOnly || digitsOnly.length < 10 || digitsOnly.length > 15) {
-    throw ApiError.badRequest(
-      `"${phoneNumber}" doesn't look like a valid phone number with country code. Use e.g. +919849453086.`
-    );
+  const digits = String(phoneNumber).replace(/[^\d]/g, '');
+  if (!digits || digits.length < 10 || digits.length > 15) {
+    throw ApiError.badRequest(`"${phoneNumber}" is not a valid phone number with country code.`);
   }
-  return `${digitsOnly}@c.us`;
+  return `${digits}@c.us`;
 };
+
+/** Safe helper – works even when library returns $1 instead of _serialized */
+const getSerialized = (id) => id?._serialized || id?.$1 || id?.user || null;
 
 export const sendWhatsAppMessage = async (phoneNumber, message) => {
   assertReady();
   const chatId = toChatId(phoneNumber);
-  try {
-    const result = await getWhatsAppClient().sendMessage(chatId, message);
-    // Basic sanity: library returned something
-    if (!result) {
-      throw new Error('WhatsApp accepted the call but returned no message object');
-    }
-    return result;
-  } catch (error) {
-    throw ApiError.internal(`Failed to send the WhatsApp message: ${error.message}`);
-  }
+  const result = await getWhatsAppClient().sendMessage(chatId, message);
+  if (!result) throw ApiError.internal('WhatsApp returned no message object');
+  return result;
 };
 
-/**
- * Searches contacts by name. Prefers real phone numbers over LIDs.
- * @param {string} nameQuery
- */
 export const searchContacts = async (nameQuery) => {
   assertReady();
-  const contacts = await getWhatsAppClient().getContacts();
-  const lowerQuery = nameQuery.toLowerCase();
+  const client = getWhatsAppClient();
+  let contacts = [];
+  try {
+    contacts = await client.getContacts();
+  } catch (err) {
+    // Fallback: try getChats and extract participants
+    const chats = await client.getChats().catch(() => []);
+    contacts = chats.map(c => c.contact || c).filter(Boolean);
+  }
 
+  const lower = nameQuery.toLowerCase();
   const matches = [];
 
   for (const c of contacts) {
-    const name = (c.name || c.pushname || '').trim();
-    if (!name.toLowerCase().includes(lowerQuery)) continue;
+    const name = (c.name || c.pushname || c.formattedName || '').trim();
+    if (!name.toLowerCase().includes(lower)) continue;
 
-    const serialized = c.id?._serialized || '';
-
-    // Always skip Linked IDs
-    if (serialized.endsWith('@lid')) continue;
+    const serialized = getSerialized(c.id);
+    if (!serialized || serialized.endsWith('@lid')) continue;
 
     let number = null;
-
     if (serialized.endsWith('@c.us') && c.id?.user) {
       number = String(c.id.user).replace(/[^\d]/g, '');
     } else if (c.number) {
       const digits = String(c.number).replace(/[^\d]/g, '');
-      // Normal international mobile: 10–15 digits, and not a known LID pattern
       if (digits.length >= 10 && digits.length <= 15) number = digits;
     }
 
-    if (!number) continue;
-
-    matches.push({ name: name || 'Unknown', number });
+    if (number) matches.push({ name: name || 'Unknown', number });
   }
 
+  // Deduplicate
   const seen = new Set();
-  return matches.filter((m) => {
+  return matches.filter(m => {
     if (seen.has(m.number)) return false;
     seen.add(m.number);
     return true;
   });
 };
+
 /**
- * Reads recent messages from a chat by name OR phone number.
- * @param {string} chatNameQuery - contact name or phone number
- * @param {number} [count]
+ * Much more robust message reading
  */
 export const readRecentMessagesFromChat = async (chatNameQuery, count = 10) => {
   assertReady();
   const client = getWhatsAppClient();
   const query = (chatNameQuery || '').trim();
+  if (!query) throw ApiError.badRequest('Please give a chat name or phone number.');
 
-  if (!query) {
-    throw ApiError.badRequest('Please give a chat name or phone number.');
-  }
-
+  const limit = Math.min(count || 10, 50);
   const digits = query.replace(/[^\d]/g, '');
-  const limit = count || 10;
   let chat = null;
-  let messages = null;
+  let messages = [];
   const tried = [];
 
+  // Strategy 1: phone number path
   if (digits.length >= 10) {
-    // 1) Resolve to WhatsApp id (often @lid now)
-    let serialized = null;
+    // Try getNumberId first (handles LID)
     try {
       const numberId = await client.getNumberId(digits);
-      serialized = numberId?._serialized || null;
-      tried.push(`getNumberId → ${serialized || 'null'}`);
-    } catch (err) {
-      tried.push(`getNumberId error: ${err.message}`);
-    }
-
-    // 2) Load chat by resolved id (LID or @c.us)
-    if (serialized) {
-      try {
-        chat = await client.getChatById(serialized);
-        tried.push(`getChatById(${serialized}) → ok`);
-      } catch (err) {
-        tried.push(`getChatById(${serialized}) error: ${err.message}`);
+      const serialized = getSerialized(numberId);
+      tried.push(`getNumberId → ${serialized}`);
+      if (serialized) {
+        chat = await client.getChatById(serialized).catch(() => null);
       }
+    } catch (e) {
+      tried.push(`getNumberId error: ${e.message}`);
     }
 
-    // 3) Fallback searchMessages by chatId (skips getChats)
-    if (!chat && serialized && typeof client.searchMessages === 'function') {
-      try {
-        messages = await client.searchMessages('', { chatId: serialized, limit });
-        tried.push(`searchMessages → ${messages?.length ?? 0}`);
-      } catch (err) {
-        tried.push(`searchMessages error: ${err.message}`);
-      }
-    }
-
-    // 4) Last resort: classic @c.us
-    if (!chat && !messages) {
+    // Classic @c.us fallback
+    if (!chat) {
       try {
         chat = await client.getChatById(`${digits}@c.us`);
         tried.push('getChatById @c.us → ok');
-      } catch (err) {
-        tried.push(`getChatById @c.us error: ${err.message}`);
+      } catch (e) {
+        tried.push(`@c.us error: ${e.message}`);
       }
     }
   }
 
-  if (chat && !messages) {
+  // Strategy 2: search by name via getChats
+  if (!chat) {
+    try {
+      const chats = await client.getChats();
+      const lower = query.toLowerCase();
+      chat = chats.find(c =>
+        (c.name || '').toLowerCase().includes(lower) ||
+        (c.formattedTitle || '').toLowerCase().includes(lower)
+      );
+      if (chat) tried.push('found via getChats name match');
+    } catch (e) {
+      tried.push(`getChats error: ${e.message}`);
+    }
+  }
+
+  if (!chat) {
+    throw ApiError.notFound(`Could not find chat for "${chatNameQuery}". Tried: ${tried.join(' | ')}`);
+  }
+
+  // Fetch messages with multiple fallbacks
+  try {
     messages = await chat.fetchMessages({ limit });
+  } catch (e) {
+    tried.push(`fetchMessages failed: ${e.message}`);
+    // Last resort – searchMessages
+    try {
+      const ser = getSerialized(chat.id);
+      if (ser && typeof client.searchMessages === 'function') {
+        messages = await client.searchMessages('', { chatId: ser, limit });
+      }
+    } catch (e2) {
+      tried.push(`searchMessages also failed: ${e2.message}`);
+    }
   }
 
-  if (!messages) {
-    throw ApiError.notFound(
-      `No chat/messages for "${chatNameQuery}". Debug: ${tried.join(' | ')}`
-    );
+  if (!messages || messages.length === 0) {
+    throw ApiError.notFound(`No messages found. Debug: ${tried.join(' | ')}`);
   }
 
-  return messages.map((m) => ({
+  return messages.map(m => ({
     fromMe: m.fromMe,
     body: m.body || (m.hasMedia ? '[media]' : ''),
     timestamp: new Date((m.timestamp || 0) * 1000),
+    hasMedia: !!m.hasMedia,
   }));
+};
+
+/** NEW – list unread chats */
+export const getUnreadChats = async (limit = 10) => {
+  assertReady();
+  const chats = await getWhatsAppClient().getChats();
+  return chats
+    .filter(c => c.unreadCount > 0)
+    .slice(0, limit)
+    .map(c => ({
+      name: c.name || c.formattedTitle || 'Unknown',
+      unreadCount: c.unreadCount,
+      id: getSerialized(c.id),
+    }));
+};
+
+/** NEW – mark chat as read */
+export const markChatAsRead = async (chatNameQuery) => {
+  assertReady();
+  // Re-use the robust finder
+  const messages = await readRecentMessagesFromChat(chatNameQuery, 1);
+  // The chat object is not returned, so we re-resolve quickly
+  const client = getWhatsAppClient();
+  const digits = chatNameQuery.replace(/[^\d]/g, '');
+  let chat = null;
+  if (digits.length >= 10) {
+    chat = await client.getChatById(`${digits}@c.us`).catch(() => null);
+  }
+  if (!chat) {
+    const chats = await client.getChats();
+    chat = chats.find(c => (c.name || '').toLowerCase().includes(chatNameQuery.toLowerCase()));
+  }
+  if (chat) await chat.sendSeen();
+  return true;
 };

@@ -1,0 +1,5 @@
+{
+	"backendWsUrl": "wss://your-backend.example.com/ws/system-agent",
+	"pairingToken": "paste-your-pairing-token-here",
+	"fullControl": false
+}
