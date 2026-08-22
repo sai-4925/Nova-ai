@@ -40,11 +40,16 @@ Available routes and when to use them:
   - For "send": include "to" (an actual email address - only fill this if the
     user gave a real address; do NOT invent one from a name like "mom"), "subject", "body".
   - For "read" or "summarize": optionally include "count" (number of recent emails).
-- "whatsapp": send a WhatsApp message, search a contact, or read messages. routeParams MUST include
-  "action": one of "send" | "search_contact" | "read".
+- "whatsapp": send a WhatsApp message, search a contact, read messages, list unread, or mark as read.
+  routeParams MUST include "action": one of
+  "send" | "search_contact" | "read" | "get_unread" | "mark_read".
   - For "send": include "phoneNumber" (with country code, only if the user gave a real
     number - do NOT invent one from a name) and "message".
   - For "search_contact": include "nameQuery".
+  - For "read": include "chatNameQuery" (contact name OR phone number with country code)
+    and optionally "count".
+  - For "get_unread": optional "limit" (default 10).
+  - For "mark_read": include "chatNameQuery".
   - For "read": include "chatNameQuery" (contact name OR phone number with country code) and optionally "count".
 - "reminder": create, list, or delete a reminder. routeParams MUST include
   "action": one of "create" | "list" | "delete".

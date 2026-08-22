@@ -3,12 +3,14 @@ import {
   sendWhatsAppTool,
   searchWhatsAppContactTool,
   readWhatsAppMessagesTool,
+  getUnreadWhatsAppChatsTool,
+  markWhatsAppChatReadTool,
 } from '../../tools/whatsappTool.js';
 import { logger } from '../../utils/logger.js';
 
 export const whatsappNode = async (state) => {
   const params = state.routeParams || {};
-  const { action, phoneNumber, message, nameQuery, chatNameQuery, count } = params;
+  const { action, phoneNumber, message, nameQuery, chatNameQuery, count, limit } = params;
 
   try {
     let output;
@@ -29,13 +31,19 @@ export const whatsappNode = async (state) => {
       if (!chatNameQuery) {
         output = 'Whose messages would you like me to read?';
       } else {
-        console.log('WA READ routeParams:', params);
         output = await readWhatsAppMessagesTool.invoke({ chatNameQuery, count });
-        console.log('WA READ output:', output);
+      }
+    } else if (action === 'get_unread' || action === 'unread') {
+      output = await getUnreadWhatsAppChatsTool.invoke({ limit });
+    } else if (action === 'mark_read' || action === 'mark_as_read') {
+      if (!chatNameQuery) {
+        output = 'Which chat should I mark as read?';
+      } else {
+        output = await markWhatsAppChatReadTool.invoke({ chatNameQuery });
       }
     } else {
       output =
-        'I can send a WhatsApp message, search a contact, or read recent messages - which would you like to do?';
+        'I can send a message, search a contact, read messages, list unread chats, or mark a chat as read — which would you like?';
     }
 
     return {
@@ -43,13 +51,12 @@ export const whatsappNode = async (state) => {
       needsAnotherTool: false,
     };
   } catch (error) {
-    console.error('WA NODE full error:', error);
     logger.error(`WhatsApp Node failed: ${error?.message || error}`);
     return {
       toolResults: [
         {
           tool: 'whatsapp',
-          input: params, // ✅ always defined
+          input: params,
           output: error?.message || String(error) || 'WhatsApp request failed.',
         },
       ],

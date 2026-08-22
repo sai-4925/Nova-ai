@@ -70,3 +70,6 @@ Copy `linux-systemd-user.service.example` to `~/.config/systemd/user/nova-system
 systemctl --user daemon-reload
 systemctl --user enable --now nova-system-agent.service
 ```
+- **Windows volume / media:** For the most reliable control, install [nircmd](https://www.nirsoft.net/utils/nircmd.html) and put `nircmd.exe` on your PATH. Without it, the companion falls back to PowerShell (volume and media keys still work on most systems, but mute can be flaky).
+- **Linux extras:** Volume needs `pactl` (PulseAudio/PipeWire). Media needs `playerctl`. Window focus/close needs `wmctrl`. Clipboard needs `xclip` or `xsel`. Notifications need `notify-send` (libnotify).
+- **fullControl:** Only set `"fullControl": true` in `config.json` if you need `run_command` / process kill. Those can run arbitrary shell commands on this machine.

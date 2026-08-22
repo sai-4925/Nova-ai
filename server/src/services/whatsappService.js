@@ -173,21 +173,57 @@ export const getUnreadChats = async (limit = 10) => {
 };
 
 /** NEW – mark chat as read */
+/** Mark chat as read — resolve chat without fetching a full message history */
 export const markChatAsRead = async (chatNameQuery) => {
   assertReady();
-  // Re-use the robust finder
-  const messages = await readRecentMessagesFromChat(chatNameQuery, 1);
-  // The chat object is not returned, so we re-resolve quickly
   const client = getWhatsAppClient();
-  const digits = chatNameQuery.replace(/[^\d]/g, '');
+  const query = (chatNameQuery || '').trim();
+  if (!query) throw ApiError.badRequest('Please give a chat name or phone number.');
+
+  const digits = query.replace(/[^\d]/g, '');
   let chat = null;
+  const tried = [];
+
   if (digits.length >= 10) {
-    chat = await client.getChatById(`${digits}@c.us`).catch(() => null);
+    try {
+      const numberId = await client.getNumberId(digits);
+      const serialized = getSerialized(numberId);
+      if (serialized) {
+        chat = await client.getChatById(serialized).catch(() => null);
+        if (chat) tried.push('getNumberId');
+      }
+    } catch (e) {
+      tried.push(`getNumberId: ${e.message}`);
+    }
+    if (!chat) {
+      try {
+        chat = await client.getChatById(`${digits}@c.us`);
+        tried.push('@c.us');
+      } catch (e) {
+        tried.push(`@c.us: ${e.message}`);
+      }
+    }
   }
+
   if (!chat) {
-    const chats = await client.getChats();
-    chat = chats.find(c => (c.name || '').toLowerCase().includes(chatNameQuery.toLowerCase()));
+    try {
+      const chats = await client.getChats();
+      const lower = query.toLowerCase();
+      chat = chats.find(
+        (c) =>
+          (c.name || '').toLowerCase().includes(lower) ||
+          (c.formattedTitle || '').toLowerCase().includes(lower)
+      );
+      if (chat) tried.push('getChats name');
+    } catch (e) {
+      tried.push(`getChats: ${e.message}`);
+    }
   }
-  if (chat) await chat.sendSeen();
+
+  if (!chat) {
+    throw ApiError.notFound(`Could not find chat for "${chatNameQuery}". Tried: ${tried.join(' | ')}`);
+  }
+
+  await chat.sendSeen();
   return true;
 };

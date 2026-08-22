@@ -21,6 +21,7 @@ const connections = new Map(); // userId (string) -> WebSocket
 const pendingRequests = new Map(); // requestId -> { resolve, reject, timeoutHandle }
 
 const REQUEST_TIMEOUT_MS = 20000; // companion actions (open app, screenshot) should respond quickly
+const RUN_COMMAND_TIMEOUT_MS = 60000;
 
 /**
  * Attaches the WebSocket server to the existing HTTP server (the same
@@ -110,12 +111,13 @@ export const sendCommandToCompanion = (userId, action, params = {}) => {
   }
 
   const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const timeoutMs = action === 'run_command' ? RUN_COMMAND_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
 
   return new Promise((resolve, reject) => {
     const timeoutHandle = setTimeout(() => {
       pendingRequests.delete(requestId);
       reject(new Error('The companion app took too long to respond.'));
-    }, REQUEST_TIMEOUT_MS);
+    }, timeoutMs);
 
     pendingRequests.set(requestId, { resolve, reject, timeoutHandle });
     ws.send(JSON.stringify({ type: 'command', requestId, action, params }));

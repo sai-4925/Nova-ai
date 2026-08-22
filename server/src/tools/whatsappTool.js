@@ -1,14 +1,17 @@
 // tools/whatsappTool.js
 // -----------------------------------------------------------------------
-// Plain tools (not factory-bound) - like sendEmailTool.js, these operate
-// on the ONE shared WhatsApp account, not a specific user's own data,
-// so there's no per-user trust boundary to enforce here the way
-// reminders/calendar/PDF require.
+// Plain tools (not factory-bound) - shared WhatsApp account.
 // -----------------------------------------------------------------------
 
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { sendWhatsAppMessage, searchContacts, readRecentMessagesFromChat } from '../services/whatsappService.js';
+import {
+  sendWhatsAppMessage,
+  searchContacts,
+  readRecentMessagesFromChat,
+  getUnreadChats,
+  markChatAsRead,
+} from '../services/whatsappService.js';
 
 export const sendWhatsAppTool = tool(
   async ({ phoneNumber, message }) => {
@@ -51,12 +54,43 @@ export const readWhatsAppMessagesTool = tool(
   {
     name: 'read_whatsapp_messages',
     description:
-      "Reads recent messages from a WhatsApp chat. chatNameQuery can be a contact name OR a phone number with country code (e.g. +916300509285).",
+      "Reads recent messages from a WhatsApp chat. chatNameQuery can be a contact name OR a phone number with country code.",
     schema: z.object({
-      chatNameQuery: z
-        .string()
-        .describe('Contact name or phone number with country code'),
+      chatNameQuery: z.string().describe('Contact name or phone number with country code'),
       count: z.number().optional().describe('How many recent messages, default 10'),
+    }),
+  }
+);
+
+/** NEW */
+export const getUnreadWhatsAppChatsTool = tool(
+  async ({ limit }) => {
+    const chats = await getUnreadChats(limit || 10);
+    if (chats.length === 0) return 'No unread WhatsApp chats.';
+    return chats
+      .map((c) => `- ${c.name}: ${c.unreadCount} unread`)
+      .join('\n');
+  },
+  {
+    name: 'get_unread_whatsapp_chats',
+    description: 'Lists WhatsApp chats that currently have unread messages.',
+    schema: z.object({
+      limit: z.number().optional().describe('Max chats to return, default 10'),
+    }),
+  }
+);
+
+/** NEW */
+export const markWhatsAppChatReadTool = tool(
+  async ({ chatNameQuery }) => {
+    await markChatAsRead(chatNameQuery);
+    return `Marked chat "${chatNameQuery}" as read.`;
+  },
+  {
+    name: 'mark_whatsapp_chat_read',
+    description: 'Marks a WhatsApp chat as read (clears unread badge) by contact name or phone number.',
+    schema: z.object({
+      chatNameQuery: z.string().describe('Contact name or phone number with country code'),
     }),
   }
 );
